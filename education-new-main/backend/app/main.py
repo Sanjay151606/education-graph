@@ -43,7 +43,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BrainGraph API", version="1.0.0", lifespan=lifespan)
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
-_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# Read allowed origin from FRONTEND_URL environment variable, or fall back to CORS_ORIGINS
+_origins = []
+if settings.frontend_url:
+    for url in settings.frontend_url.split(","):
+        cleaned = url.strip().rstrip("/")
+        if cleaned and cleaned not in _origins:
+            _origins.append(cleaned)
+
+if settings.cors_origins:
+    for o in settings.cors_origins.split(","):
+        cleaned = o.strip().rstrip("/")
+        if cleaned and cleaned not in _origins:
+            _origins.append(cleaned)
+
+if not _origins:
+    _origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +94,7 @@ app.include_router(recordings.router)
 
 
 # ─── Health & Root ────────────────────────────────────────────────────────────
+@app.get("/api/health", tags=["health"])
 @app.get("/health", tags=["health"])
 def health():
     """Health check endpoint — returns 200 when the API is running."""
@@ -88,3 +104,11 @@ def health():
 @app.get("/", tags=["health"])
 def root():
     return {"status": "BrainGraph API running"}
+
+
+if __name__ == "__main__":
+    import os
+    import uvicorn
+    port = int(os.environ.get("PORT", os.environ.get("port", settings.port or 8000)))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
+

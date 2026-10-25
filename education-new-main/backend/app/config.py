@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
+    frontend_url: str = ""
+    port: int = 8000
 
     @property
     def effective_jwt_secret(self) -> str:

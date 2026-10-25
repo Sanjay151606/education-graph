@@ -1,0 +1,9 @@
+{
+  "name": "braingraph-backend",
+  "version": "1.0.0",
+  "description": "BrainGraph FastAPI Backend",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js"
+  }
+}

@@ -47,9 +47,19 @@ export default function TeacherDashboard() {
   useEffect(() => {
     setLoading(true);
     setError("");
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname === "localhost" ? "localhost:8000" : window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/engagement/${sessionId}?role=teacher`;
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    let wsHost = window.location.host;
+    let protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    if (apiUrl) {
+      try {
+        const parsed = new URL(apiUrl);
+        wsHost = parsed.host;
+        protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      } catch (e) {
+        // fallback to window.location
+      }
+    }
+    const wsUrl = `${protocol}//${wsHost}/ws/engagement/${sessionId}?role=teacher`;
 
     let socket;
     try {
