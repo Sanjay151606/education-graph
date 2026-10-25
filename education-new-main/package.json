@@ -1,0 +1,11 @@
+{
+  "name": "braingraph-education-platform",
+  "version": "2.0.0",
+  "description": "BrainGraph - AI-Powered Neurodivergent Education & ADHD Learning Companion",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run preview"
+  }
+}

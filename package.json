@@ -1,0 +1,10 @@
+{
+  "name": "braingraph-root",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix education-new-main/frontend run dev",
+    "build": "npm --prefix education-new-main/frontend run build",
+    "preview": "npm --prefix education-new-main/frontend run preview"
+  }
+}

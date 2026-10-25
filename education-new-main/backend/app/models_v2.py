@@ -1,0 +1,48 @@
+"""
+models_v2.py - Re-exports models from app.models for backwards compatibility.
+"""
+from app.models import (
+    Base,
+    User,
+    Task,
+    TaskPriority,
+    TaskStatus,
+    StudyMaterial,
+    FocusSession,
+    Progress,
+    AIRecommendation,
+    ADHDProfile,
+    EngagementEvent,
+    EngagementState,
+    KnowledgeBand,
+    BandLevel,
+    AssessmentSession,
+    AssessmentItem,
+    AssessmentResponse,
+    SessionRecording,
+    ConfusionBookmark,
+    DiagnosticQuizItem,
+)
+
+__all__ = [
+    "Base",
+    "User",
+    "Task",
+    "TaskPriority",
+    "TaskStatus",
+    "StudyMaterial",
+    "FocusSession",
+    "Progress",
+    "AIRecommendation",
+    "ADHDProfile",
+    "EngagementEvent",
+    "EngagementState",
+    "KnowledgeBand",
+    "BandLevel",
+    "AssessmentSession",
+    "AssessmentItem",
+    "AssessmentResponse",
+    "SessionRecording",
+    "ConfusionBookmark",
+    "DiagnosticQuizItem",
+]

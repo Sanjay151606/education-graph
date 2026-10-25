@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.18) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.10) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+/* Reduced Stimulation Mode & Accessibility */
+body.reduced-stim *,
+body.reduced-stim *::before,
+body.reduced-stim *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+body.reduced-stim .animate-pulse,
+body.reduced-stim .animate-spin,
+body.reduced-stim .animate-bounce {
+  animation: none !important;
+}
+
+/* Keyboard Navigation visible focus outline */
+:focus-visible {
+  outline: 2px solid #3b7dff;
+  outline-offset: 2px;
+}

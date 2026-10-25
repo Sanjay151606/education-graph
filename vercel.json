@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd education-new-main/frontend && npm install && npm run build",
+  "outputDirectory": "education-new-main/frontend/dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

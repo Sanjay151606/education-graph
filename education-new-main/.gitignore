@@ -1,0 +1,45 @@
+# Node dependencies & build artifacts
+node_modules/
+dist/
+build/
+.output/
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+braingraph.db
+
+# Environment variables & secrets (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Temporary uploads & logs
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# IDE & OS specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
