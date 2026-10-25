@@ -35,7 +35,7 @@ export const Sidebar = () => {
               }
             >
               <Icon className="w-5 h-5 flex-shrink-0" />
-              <span className=\"whitespace-nowrap\">{item.name}</span>
+              <span className="whitespace-nowrap">{item.name}</span>
               {item.highlight && (
                 <span className="ml-auto flex h-2 w-2 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-focus-400 opacity-75"></span>

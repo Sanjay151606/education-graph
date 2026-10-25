@@ -1,7 +1,7 @@
 from app.db.session import Base
 from app.models.user import User
 from app.models.task import Task, TaskPriority, TaskStatus
-from app.models.study_material import StudyMaterial
+from app.models.study_material import StudyMaterial, NoteReadProgress
 from app.models.focus_session import FocusSession
 from app.models.progress import Progress
 from app.models.ai_recommendation import AIRecommendation
@@ -22,6 +22,7 @@ __all__ = [
     "TaskPriority",
     "TaskStatus",
     "StudyMaterial",
+    "NoteReadProgress",
     "FocusSession",
     "Progress",
     "AIRecommendation",

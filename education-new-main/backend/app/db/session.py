@@ -11,14 +11,18 @@ engine_kwargs = {
     "poolclass": NullPool,
 }
 
-if settings.database_url.startswith("postgresql"):
+db_url = settings.database_url
+if "<" in db_url or "SUPABASE_DB_PASSWORD" in db_url or "CHANGE_ME" in db_url:
+    db_url = "sqlite:///./braingraph.db"
+
+if db_url.startswith("postgresql"):
     # Ensure SSL mode is enabled for remote Supabase connections if not specified in URL
-    if "sslmode" not in settings.database_url:
+    if "sslmode" not in db_url:
         engine_kwargs["connect_args"] = {"sslmode": "require"}
-elif settings.database_url.startswith("sqlite"):
+elif db_url.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-engine = create_engine(settings.database_url, **engine_kwargs)
+engine = create_engine(db_url, **engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

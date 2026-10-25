@@ -25,6 +25,7 @@ class StudyMaterialBase(BaseModel):
     original_text: Optional[str] = None
     tags: List[str] = []
     visibility: str = "published"  # "published" | "draft"
+    allow_download: bool = True
 
 
 class StudyMaterialCreate(StudyMaterialBase):
@@ -42,6 +43,7 @@ class StudyMaterialUpdate(BaseModel):
     simplified_content: Optional[str] = None
     tags: Optional[List[str]] = None
     visibility: Optional[str] = None
+    allow_download: Optional[bool] = None
 
 
 class StudyMaterialOut(StudyMaterialBase):
@@ -54,6 +56,9 @@ class StudyMaterialOut(StudyMaterialBase):
     file_size: Optional[int] = None
     has_file: bool = False
     download_url: Optional[str] = None
+    allow_download: bool = True
+    is_read: Optional[bool] = False
+    read_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -65,3 +70,10 @@ class MaterialSignedUrlOut(BaseModel):
     file_name: str
     signed_url: str
     expires_in_seconds: int = 300
+
+
+class NoteReadStatusOut(BaseModel):
+    material_id: uuid.UUID
+    is_read: bool
+    read_at: Optional[datetime] = None
+

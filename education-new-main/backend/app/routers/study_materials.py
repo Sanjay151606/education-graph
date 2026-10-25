@@ -20,12 +20,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc
 
 from app.database import get_db
-from app.models import User, StudyMaterial
+from app.models import User, StudyMaterial, NoteReadProgress
 from app.schemas.study_material import (
     StudyMaterialCreate,
     StudyMaterialUpdate,
     StudyMaterialOut,
     MaterialSignedUrlOut,
+    NoteReadStatusOut,
 )
 from app.auth import get_current_user, require_teacher, require_student
 from app.config import settings
@@ -47,11 +48,21 @@ def _get_supabase_client():
     return None
 
 
-def _format_material_out(mat: StudyMaterial, author_name: str = "Instructor", request: Optional[Request] = None) -> StudyMaterialOut:
+def _format_material_out(
+    mat: StudyMaterial,
+    author_name: str = "Instructor",
+    request: Optional[Request] = None,
+    is_read: bool = False,
+    read_at: Optional[datetime] = None,
+) -> StudyMaterialOut:
     has_file = bool(mat.file_path or mat.file_name)
     download_url = None
     if has_file:
         download_url = f"/api/study-materials/{str(mat.id)}/file"
+
+    allow_dl = getattr(mat, "allow_download", True)
+    if allow_dl is None:
+        allow_dl = True
 
     return StudyMaterialOut(
         id=mat.id,
@@ -72,6 +83,9 @@ def _format_material_out(mat: StudyMaterial, author_name: str = "Instructor", re
         file_size=mat.file_size,
         has_file=has_file,
         download_url=download_url,
+        allow_download=allow_dl,
+        is_read=is_read,
+        read_at=read_at,
         tags=mat.tags or [],
         visibility=mat.visibility or "published",
         created_at=mat.created_at,
@@ -97,6 +111,7 @@ def list_study_materials(
     - Students only see 'published' materials.
     - Teachers see all 'published' materials + their own 'draft' materials.
     - Supports full search & filtering by subject and material type.
+    - Includes student read progress status.
     """
     user_role = getattr(current_user, "role", "student") or "student"
 
@@ -145,10 +160,20 @@ def list_study_materials(
 
     results = query.order_by(desc(StudyMaterial.created_at)).all()
 
+    # Collect read status for current_user
+    read_map = {}
+    try:
+        read_records = db.query(NoteReadProgress).filter(NoteReadProgress.user_id == current_user.id).all()
+        for r in read_records:
+            read_map[r.material_id] = (r.is_read, r.read_at)
+    except Exception as e:
+        print(f"[StudyMaterials] read_progress lookup note: {e}")
+
     out_list = []
     for mat, full_name, name in results:
         author = full_name or name or "Instructor"
-        out_list.append(_format_material_out(mat, author, request))
+        is_read, read_at = read_map.get(mat.id, (False, None))
+        out_list.append(_format_material_out(mat, author, request, is_read=is_read, read_at=read_at))
 
     return out_list
 
@@ -181,8 +206,21 @@ def get_study_material(
     if mat.visibility == "draft" and user_role != "teacher" and mat.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This material is currently in draft.")
 
+    is_read = False
+    read_at = None
+    try:
+        r = db.query(NoteReadProgress).filter(
+            NoteReadProgress.material_id == material_id,
+            NoteReadProgress.user_id == current_user.id
+        ).first()
+        if r:
+            is_read = r.is_read
+            read_at = r.read_at
+    except Exception:
+        pass
+
     author = full_name or name or "Instructor"
-    return _format_material_out(mat, author, request)
+    return _format_material_out(mat, author, request, is_read=is_read, read_at=read_at)
 
 
 # ─── 3. Create Study Material (Teacher) ──────────────────────────────────────
@@ -210,6 +248,7 @@ def create_study_material_json(
         original_content=material_in.original_content,
         tags=material_in.tags or [],
         visibility=material_in.visibility or "published",
+        allow_download=material_in.allow_download if material_in.allow_download is not None else True,
         created_at=datetime.utcnow(),
     )
 
@@ -231,6 +270,7 @@ async def upload_study_material_file(
     description: str = Form(""),
     material_type: str = Form("PDF"),
     visibility: str = Form("published"),
+    allow_download: str = Form("true"),
     tags_json: str = Form("[]"),
     structured_content_json: str = Form("{}"),
     file: Optional[UploadFile] = File(None),
@@ -242,6 +282,7 @@ async def upload_study_material_file(
     Teacher creates study material with an optional uploaded document (PDF, DOCX, etc.)
     - Stores file in private Supabase Storage bucket 'study-materials'
     - Local fallback storage for offline development
+    - Supports allow_download permission toggle
     """
     material_id = uuid.uuid4()
     file_name = None
@@ -289,6 +330,8 @@ async def upload_study_material_file(
     except Exception:
         parsed_structured = {}
 
+    is_allow_download = str(allow_download).lower() in ("true", "1", "yes")
+
     material = StudyMaterial(
         id=material_id,
         user_id=current_user.id,
@@ -304,6 +347,7 @@ async def upload_study_material_file(
         file_size=file_size,
         tags=parsed_tags,
         visibility=visibility or "published",
+        allow_download=is_allow_download,
         created_at=datetime.utcnow(),
     )
 
@@ -353,6 +397,8 @@ def update_study_material(
         material.tags = material_in.tags
     if material_in.visibility is not None:
         material.visibility = material_in.visibility
+    if material_in.allow_download is not None:
+        material.allow_download = material_in.allow_download
 
     material.updated_at = datetime.utcnow()
     db.commit()
@@ -360,6 +406,81 @@ def update_study_material(
 
     author = getattr(current_user, "full_name", None) or getattr(current_user, "name", None) or "Instructor"
     return _format_material_out(material, author, request)
+
+
+# ─── 5B. Mark Note As Read (Student & Teacher) ──────────────────────────────
+
+@router.post("/api/study-materials/{material_id}/mark-read", response_model=NoteReadStatusOut)
+def mark_material_as_read(
+    material_id: uuid.UUID,
+    is_read: Optional[bool] = Query(None, description="Set explicit read state; omit to toggle"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Mark a note as read or unread for the current user.
+    """
+    material = db.query(StudyMaterial).filter(StudyMaterial.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
+
+    progress = db.query(NoteReadProgress).filter(
+        NoteReadProgress.material_id == material_id,
+        NoteReadProgress.user_id == current_user.id
+    ).first()
+
+    if not progress:
+        target_read = True if is_read is None else is_read
+        progress = NoteReadProgress(
+            id=uuid.uuid4(),
+            material_id=material_id,
+            user_id=current_user.id,
+            is_read=target_read,
+            read_at=datetime.utcnow() if target_read else None
+        )
+        db.add(progress)
+    else:
+        if is_read is None:
+            progress.is_read = not progress.is_read
+        else:
+            progress.is_read = is_read
+        progress.read_at = datetime.utcnow() if progress.is_read else None
+
+    db.commit()
+    db.refresh(progress)
+    return NoteReadStatusOut(
+        material_id=material_id,
+        is_read=progress.is_read,
+        read_at=progress.read_at
+    )
+
+
+@router.get("/api/study-materials/{material_id}/read-status", response_model=NoteReadStatusOut)
+def get_material_read_status(
+    material_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get read progress status for current user on a note.
+    """
+    progress = db.query(NoteReadProgress).filter(
+        NoteReadProgress.material_id == material_id,
+        NoteReadProgress.user_id == current_user.id
+    ).first()
+
+    if not progress:
+        return NoteReadStatusOut(
+            material_id=material_id,
+            is_read=False,
+            read_at=None
+        )
+
+    return NoteReadStatusOut(
+        material_id=material_id,
+        is_read=progress.is_read,
+        read_at=progress.read_at
+    )
 
 
 # ─── 6. Toggle Visibility (Publish / Draft) ──────────────────────────────────

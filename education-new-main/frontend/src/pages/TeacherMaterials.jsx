@@ -54,6 +54,7 @@ export default function TeacherMaterials() {
   const [originalContent, setOriginalContent] = useState("");
   const [uploadedFile, setUploadedFile] = useState(null);
   const [visibility, setVisibility] = useState("published");
+  const [allowDownload, setAllowDownload] = useState(true);
   const [tagInput, setTagInput] = useState("");
 
   // UI state
@@ -131,6 +132,7 @@ export default function TeacherMaterials() {
         formData.append("target_band", targetBand);
         formData.append("knowledge_band_target", targetBand);
         formData.append("visibility", visibility);
+        formData.append("allow_download", allowDownload ? "true" : "false");
         formData.append("tags", JSON.stringify(tagsList));
         formData.append("file", uploadedFile);
 
@@ -147,6 +149,7 @@ export default function TeacherMaterials() {
           knowledge_band_target: targetBand,
           original_content: originalContent,
           visibility,
+          allow_download: allowDownload,
           tags: tagsList,
         };
 
@@ -155,7 +158,7 @@ export default function TeacherMaterials() {
 
       setFeedback({
         type: "success",
-        message: "🎉 Study material created and processed into student-ready format!",
+        message: "Study material created and processed into student-ready format!",
       });
 
       // Reset form
@@ -512,10 +515,31 @@ export default function TeacherMaterials() {
                 onChange={(e) => setVisibility(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               >
-                <option value="published">🚀 Published (Visible to enrolled students)</option>
-                <option value="draft">🔒 Draft (Only visible to you)</option>
+                <option value="published">Published (Visible to students)</option>
+                <option value="draft">Draft (Only visible to you)</option>
               </select>
             </div>
+          </div>
+
+          {/* Download Permission Toggle */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-slate-800">
+                Allow Students to Download
+              </div>
+              <div className="text-[11px] text-slate-500">
+                If disabled, students can only read and view the material in the app browser.
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allowDownload}
+                onChange={(e) => setAllowDownload(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
           </div>
 
           {/* Submit Action */}

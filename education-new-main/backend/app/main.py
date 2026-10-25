@@ -20,6 +20,17 @@ async def lifespan(app: FastAPI):
     errors so the API starts even when the database is temporarily unreachable."""
     try:
         Base.metadata.create_all(bind=engine)
+        # Automatic migration check for SQLite
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                res = conn.execute(text("PRAGMA table_info(study_materials)"))
+                existing_cols = [row[1] for row in res.fetchall()]
+                if existing_cols and "allow_download" not in existing_cols:
+                    conn.execute(text("ALTER TABLE study_materials ADD COLUMN allow_download BOOLEAN DEFAULT 1"))
+                    conn.commit()
+        except Exception:
+            pass
         logger.info("Database tables verified / created.")
     except Exception as exc:
         logger.warning(

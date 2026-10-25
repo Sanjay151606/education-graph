@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, Float, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, Float, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -99,11 +99,30 @@ class StudyMaterial(Base):
     tags = Column(JSON, default=list, nullable=False)
     source_file_name = Column(String, nullable=True)
     knowledge_band_target = Column(String, default="all", nullable=False)
+    allow_download = Column(Boolean, default=True, nullable=False)
     visibility = Column(String, default="published", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     owner = relationship("User", back_populates="materials")
+    read_progress = relationship("NoteReadProgress", back_populates="material", cascade="all, delete-orphan")
+
+
+class NoteReadProgress(Base):
+    """Tracks per-student read status for each study material / note."""
+    __tablename__ = "note_read_progress"
+    __table_args__ = (
+        UniqueConstraint("material_id", "user_id", name="uq_note_read_material_user"),
+        {"extend_existing": True},
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    material_id = Column(UUID(as_uuid=True), ForeignKey("study_materials.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    read_at = Column(DateTime, nullable=True)
+
+    material = relationship("StudyMaterial", back_populates="read_progress")
 
 
 

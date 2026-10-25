@@ -139,17 +139,17 @@ export default function App() {
         <Route
           path="/materials"
           element={
-            <ProtectedRoute requiredRole="student">
+            <Private>
               <StudyMaterials />
-            </ProtectedRoute>
+            </Private>
           }
         />
         <Route
           path="/study-materials"
           element={
-            <ProtectedRoute requiredRole="student">
+            <Private>
               <StudyMaterials />
-            </ProtectedRoute>
+            </Private>
           }
         />
 

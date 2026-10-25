@@ -200,6 +200,19 @@ export const v2Api = {
     const res = await api.get(`/api/study-materials/${materialId}/signed-url`);
     return res.data;
   },
+
+  markNoteAsRead: async (materialId, isRead = null) => {
+    const url = isRead !== null 
+      ? `/api/study-materials/${materialId}/mark-read?is_read=${isRead}`
+      : `/api/study-materials/${materialId}/mark-read`;
+    const res = await api.post(url);
+    return res.data;
+  },
+
+  getNoteReadStatus: async (materialId) => {
+    const res = await api.get(`/api/study-materials/${materialId}/read-status`);
+    return res.data;
+  },
 };
 
 export default v2Api;
