@@ -34,7 +34,52 @@ ON CONFLICT (id) DO UPDATE SET
     ];
 
 -- -----------------------------------------------------------------------------
--- 2. Storage Policies for 'notes' Bucket
+-- 2. Helper Function: Check Teacher or Admin Role
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_teacher_or_admin()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_role text;
+BEGIN
+    -- Check JWT metadata (Supabase Auth default)
+    v_role := COALESCE(
+        auth.jwt() -> 'user_metadata' ->> 'role',
+        auth.jwt() -> 'app_metadata' ->> 'role',
+        auth.jwt() ->> 'role'
+    );
+    IF v_role IN ('teacher', 'admin') THEN
+        RETURN true;
+    END IF;
+
+    -- Check public.users table if it exists
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'users'
+    ) THEN
+        BEGIN
+            SELECT role INTO v_role FROM public.users WHERE id = auth.uid() LIMIT 1;
+            IF v_role IN ('teacher', 'admin') THEN
+                RETURN true;
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            -- Ignore column/table read errors
+            NULL;
+        END;
+    END IF;
+
+    RETURN false;
+END;
+$$;
+
+-- Grant execution to authenticated users
+GRANT EXECUTE ON FUNCTION public.is_teacher_or_admin() TO authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 3. Storage Policies for 'notes' Bucket
 -- -----------------------------------------------------------------------------
 
 -- Read / Download policy: Authenticated users can download objects via signed URL or if published
@@ -45,7 +90,7 @@ FOR SELECT
 TO authenticated
 USING (bucket_id = 'notes');
 
--- Upload policy: Teachers and admins only, up to 25MB, allowed types
+-- Upload policy: Teachers and admins only, up to 25MB, into their own user folder
 DROP POLICY IF EXISTS "Teachers can upload notes files" ON storage.objects;
 CREATE POLICY "Teachers can upload notes files"
 ON storage.objects
@@ -53,11 +98,8 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
     bucket_id = 'notes'
-    AND (
-        (auth.jwt() -> 'user_metadata' ->> 'role') IN ('teacher', 'admin')
-        OR (auth.jwt() ->> 'role') IN ('teacher', 'admin')
-        OR auth.uid()::text = (storage.foldername(name))[1]
-    )
+    AND public.is_teacher_or_admin()
+    AND auth.uid()::text = (storage.foldername(name))[1]
 );
 
 -- Update / Replace policy: Teachers can update their own uploaded files
@@ -68,10 +110,8 @@ FOR UPDATE
 TO authenticated
 USING (
     bucket_id = 'notes'
-    AND (
-        auth.uid()::text = (storage.foldername(name))[1]
-        OR (auth.jwt() -> 'user_metadata' ->> 'role') IN ('teacher', 'admin')
-    )
+    AND public.is_teacher_or_admin()
+    AND auth.uid()::text = (storage.foldername(name))[1]
 );
 
 -- Delete policy: Teachers can delete their own uploaded files
@@ -82,10 +122,8 @@ FOR DELETE
 TO authenticated
 USING (
     bucket_id = 'notes'
-    AND (
-        auth.uid()::text = (storage.foldername(name))[1]
-        OR (auth.jwt() -> 'user_metadata' ->> 'role') IN ('teacher', 'admin')
-    )
+    AND public.is_teacher_or_admin()
+    AND auth.uid()::text = (storage.foldername(name))[1]
 );
 
 -- -----------------------------------------------------------------------------
@@ -133,13 +171,11 @@ ON public.notes
 FOR SELECT
 TO authenticated
 USING (
-    -- Teachers and admins see their own notes and notes for classes they teach
-    (
-        (auth.jwt() -> 'user_metadata' ->> 'role') IN ('teacher', 'admin')
-        OR auth.uid() = uploaded_by
-    )
+    -- Teachers and admins see all notes (published or draft)
+    public.is_teacher_or_admin()
+    OR auth.uid() = uploaded_by
     OR
-    -- Students see only published notes for their enrolled class (defaults to matching class_id or 'CS-101')
+    -- Students see only published notes for their enrolled class
     (
         status = 'published'
         AND (
@@ -156,10 +192,7 @@ ON public.notes
 FOR INSERT
 TO authenticated
 WITH CHECK (
-    (
-        (auth.jwt() -> 'user_metadata' ->> 'role') IN ('teacher', 'admin')
-        OR (auth.jwt() ->> 'role') IN ('teacher', 'admin')
-    )
+    public.is_teacher_or_admin()
     AND auth.uid() = uploaded_by
 );
 
@@ -171,11 +204,11 @@ FOR UPDATE
 TO authenticated
 USING (
     auth.uid() = uploaded_by
-    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+    OR public.is_teacher_or_admin()
 )
 WITH CHECK (
     auth.uid() = uploaded_by
-    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+    OR public.is_teacher_or_admin()
 );
 
 -- DELETE: Teachers can delete only their own notes
@@ -186,7 +219,7 @@ FOR DELETE
 TO authenticated
 USING (
     auth.uid() = uploaded_by
-    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+    OR public.is_teacher_or_admin()
 );
 
 -- -----------------------------------------------------------------------------

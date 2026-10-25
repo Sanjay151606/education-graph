@@ -100,6 +100,10 @@ function saveLocalNotes(notes: Note[]): void {
   }
 }
 
+/**
+ * Uploads a note file directly to Supabase Storage ('notes' bucket).
+ * Throws explicit errors on any failure (no silent swallow).
+ */
 export async function uploadNoteFileDirect(
   file: File,
   teacherId: string,
@@ -110,27 +114,74 @@ export async function uploadNoteFileDirect(
     throw new Error(validation.error || 'Invalid file');
   }
 
-  const safeName = sanitizeFileName(file.name);
-  const filePath = `${teacherId}/${safeName}`;
-
-  if (onProgress) onProgress(25);
-
-  try {
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true
-      });
-
-    if (uploadError) {
-      console.warn('Supabase storage upload error, using local fallback:', uploadError.message);
-    }
-    if (onProgress) onProgress(100);
-  } catch (storageErr) {
-    console.warn('Direct storage error (continuing with local fallback):', storageErr);
-    if (onProgress) onProgress(100);
+  // 1. Check for active Supabase Auth session
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    console.error('[notesService] Session error:', sessionError);
+    throw new Error(`Session error: ${sessionError.message}`);
   }
+
+  if (!session?.user) {
+    const isDemo = typeof localStorage !== 'undefined' && !!localStorage.getItem('braingraph_demo_session');
+    if (isDemo) {
+      throw new Error(
+        'Demo Mode Notice: You are currently signed in with an offline demo session. Direct Supabase Storage uploads require an active Supabase Auth user. Please sign in with your real teacher account to upload notes.'
+      );
+    }
+    throw new Error('Session expired: No active Supabase authentication session. Please sign in as a teacher.');
+  }
+
+  // 2. Validate role
+  const resolvedRole = session.user.user_metadata?.role || (session.user as { role?: string }).role || localStorage.getItem('bg_user_role');
+  if (resolvedRole && resolvedRole !== 'teacher' && resolvedRole !== 'admin') {
+    throw new Error('Permission denied (not a teacher): Only users with the teacher role are permitted to upload notes.');
+  }
+
+  const effectiveTeacherId = session.user.id || teacherId;
+  const safeName = sanitizeFileName(file.name);
+  const filePath = `${effectiveTeacherId}/${safeName}`;
+
+  if (onProgress) onProgress(35);
+
+  // 3. Direct upload to Supabase Storage
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true
+    });
+
+  if (uploadError) {
+    console.error('[notesService] Supabase storage upload error:', uploadError);
+    const msg = uploadError.message || '';
+    const status = (uploadError as { statusCode?: number; status?: number }).statusCode ||
+                   (uploadError as { statusCode?: number; status?: number }).status;
+
+    if (msg.toLowerCase().includes('bucket not found') || status === 404 || msg.toLowerCase().includes('not found')) {
+      throw new Error(
+        `Bucket not found: Storage bucket '${BUCKET_NAME}' does not exist in Supabase. Please apply the SQL migration schema in your Supabase SQL editor.`
+      );
+    }
+    if (
+      msg.toLowerCase().includes('violates row-level security') ||
+      msg.toLowerCase().includes('row-level security') ||
+      msg.toLowerCase().includes('permission denied') ||
+      status === 403
+    ) {
+      throw new Error(
+        'Permission denied (not a teacher): Storage RLS policy rejected the upload. Ensure your account has the teacher role in Supabase.'
+      );
+    }
+    if (msg.toLowerCase().includes('payload too large') || status === 413) {
+      throw new Error('File too large: File exceeds the maximum allowed size (25 MB).');
+    }
+    if (msg.toLowerCase().includes('unauthorized') || status === 401) {
+      throw new Error('Session expired or unauthorized: Please log in again.');
+    }
+    throw new Error(`Storage upload failed: ${msg}`);
+  }
+
+  if (onProgress) onProgress(80);
 
   return {
     filePath,
@@ -139,11 +190,18 @@ export async function uploadNoteFileDirect(
   };
 }
 
+/**
+ * Inserts note record into Supabase public.notes table.
+ * Throws explicit errors on database failure (no silent swallow).
+ */
 export async function createNote(
   formData: NoteFormData,
   fileMeta: { filePath: string; sizeBytes: number; fileType: string },
   teacher: { id: string; name: string }
 ): Promise<Note> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const authUserId = session?.user?.id || teacher.id;
+
   const newNote: Note = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `note_${Date.now()}`,
     title: formData.title.trim(),
@@ -154,78 +212,80 @@ export async function createNote(
     file_path: fileMeta.filePath,
     file_type: fileMeta.fileType,
     size_bytes: fileMeta.sizeBytes,
-    uploaded_by: teacher.id,
-    teacher_name: teacher.name || 'Instructor',
+    uploaded_by: authUserId,
+    teacher_name: teacher.name || session?.user?.user_metadata?.full_name || 'Instructor',
     uploaded_at: new Date().toISOString(),
     status: formData.status,
     allow_download: formData.allow_download
   };
 
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .insert([newNote])
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('notes')
+    .insert([newNote])
+    .select()
+    .single();
 
-    if (error) {
-      console.warn('Supabase notes table insert fallback:', error.message);
-      const local = getLocalNotes();
-      local.unshift(newNote);
-      saveLocalNotes(local);
-      return newNote;
+  if (error) {
+    console.error('[notesService] Supabase notes table insert error:', error);
+    const msg = error.message || '';
+    const code = error.code;
+
+    if (code === '42P01' || msg.toLowerCase().includes('relation "public.notes" does not exist') || msg.toLowerCase().includes('does not exist')) {
+      throw new Error(
+        "Table not found: Table 'notes' does not exist in your Supabase database. Please execute the SQL migration script in your Supabase SQL editor."
+      );
     }
-
-    const local = getLocalNotes();
-    local.unshift(data || newNote);
-    saveLocalNotes(local);
-    return data || newNote;
-  } catch (err) {
-    console.warn('createNote fallback to local:', err);
-    const local = getLocalNotes();
-    local.unshift(newNote);
-    saveLocalNotes(local);
-    return newNote;
+    if (code === '42501' || msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('permission denied')) {
+      throw new Error(
+        "Permission denied (not a teacher): Database RLS policy prevented saving the note. Ensure your account has the 'teacher' role in Supabase."
+      );
+    }
+    if (code === '23503' || msg.toLowerCase().includes('foreign key')) {
+      throw new Error(
+        'Foreign key constraint error: uploaded_by does not match any user in auth.users. Please sign in with an authentic Supabase teacher account.'
+      );
+    }
+    throw new Error(`Database error saving note: ${msg}`);
   }
+
+  const savedNote = data || newNote;
+  const local = getLocalNotes();
+  local.unshift(savedNote);
+  saveLocalNotes(local);
+  return savedNote;
 }
 
 export async function updateNote(
   noteId: string,
   updates: Partial<NoteFormData> & { file_path?: string; file_type?: string; size_bytes?: number }
 ): Promise<Note> {
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', noteId)
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('notes')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', noteId)
+    .select()
+    .single();
 
-    if (error) {
-      console.warn('Supabase update fallback:', error.message);
+  if (error) {
+    console.error('[notesService] Supabase update note error:', error);
+    const msg = error.message || '';
+    if (error.code === '42501' || msg.toLowerCase().includes('row-level security')) {
+      throw new Error("Permission denied: You can only update your own notes.");
     }
-
-    const local = getLocalNotes();
-    const idx = local.findIndex((n) => n.id === noteId);
-    if (idx !== -1) {
-      local[idx] = { ...local[idx], ...updates, updated_at: new Date().toISOString() };
-      saveLocalNotes(local);
-      return local[idx];
-    }
-    return data as Note;
-  } catch {
-    const local = getLocalNotes();
-    const idx = local.findIndex((n) => n.id === noteId);
-    if (idx !== -1) {
-      local[idx] = { ...local[idx], ...updates, updated_at: new Date().toISOString() };
-      saveLocalNotes(local);
-      return local[idx];
-    }
-    throw new Error('Note not found');
+    throw new Error(`Failed to update note: ${msg}`);
   }
+
+  const local = getLocalNotes();
+  const idx = local.findIndex((n) => n.id === noteId);
+  if (idx !== -1) {
+    local[idx] = { ...local[idx], ...updates, updated_at: new Date().toISOString() };
+    saveLocalNotes(local);
+    return local[idx];
+  }
+  return data as Note;
 }
 
 export async function toggleNoteStatus(noteId: string, currentStatus: NoteStatus): Promise<NoteStatus> {
@@ -235,19 +295,20 @@ export async function toggleNoteStatus(noteId: string, currentStatus: NoteStatus
 }
 
 export async function deleteNote(noteId: string, filePath: string): Promise<void> {
-  try {
-    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-  } catch (err) {
-    console.warn('Storage remove warning:', err);
+  if (filePath && !filePath.startsWith('seed/')) {
+    const { error: storageError } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+    if (storageError) {
+      console.warn('[notesService] Storage remove warning:', storageError.message);
+    }
   }
 
-  try {
-    const { error } = await supabase.from('notes').delete().eq('id', noteId);
-    if (error) {
-      console.warn('DB delete warning:', error.message);
+  const { error: dbError } = await supabase.from('notes').delete().eq('id', noteId);
+  if (dbError) {
+    console.error('[notesService] DB delete error:', dbError);
+    if (dbError.code === '42501') {
+      throw new Error("Permission denied: You can only delete your own notes.");
     }
-  } catch (err) {
-    console.warn('deleteNote DB catch:', err);
+    throw new Error(`Failed to delete note: ${dbError.message}`);
   }
 
   const local = getLocalNotes().filter((n) => n.id !== noteId);
@@ -268,7 +329,16 @@ export async function fetchNotes(userRole: string, userId?: string, classId = 'C
 
     const { data, error } = await query.order('uploaded_at', { ascending: false });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
+      console.warn('[notesService] fetchNotes query warning:', error.message);
+      const local = getLocalNotes();
+      if (userRole === 'teacher' || userRole === 'admin') {
+        return local;
+      }
+      return local.filter((n) => n.status === 'published' && (n.class_id === classId || n.class_id === 'CS-101'));
+    }
+
+    if (!data || data.length === 0) {
       const local = getLocalNotes();
       if (userRole === 'teacher' || userRole === 'admin') {
         return local;
@@ -277,7 +347,8 @@ export async function fetchNotes(userRole: string, userId?: string, classId = 'C
     }
 
     return data as Note[];
-  } catch {
+  } catch (err) {
+    console.warn('[notesService] fetchNotes catch error:', err);
     const local = getLocalNotes();
     if (userRole === 'teacher' || userRole === 'admin') {
       return local;
@@ -294,13 +365,15 @@ export async function getSignedUrl(filePath: string): Promise<string> {
   try {
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
-      .createSignedUrl(filePath, 600); // 10 minutes (600s)
+      .createSignedUrl(filePath, 600); // 10 minutes
 
     if (error || !data?.signedUrl) {
+      console.warn('[notesService] createSignedUrl error:', error?.message);
       return '/assignment_one_30_questions.pdf';
     }
     return data.signedUrl;
-  } catch {
+  } catch (err) {
+    console.warn('[notesService] getSignedUrl catch error:', err);
     return '/assignment_one_30_questions.pdf';
   }
 }

@@ -36,6 +36,7 @@ export default function UploadNotesForm({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadStage, setUploadStage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -74,7 +75,9 @@ export default function UploadNotesForm({
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMessage('');
+    setToastMessage('');
 
     if (!formData.title.trim()) {
       setErrorMessage('Please provide a note title.');
@@ -95,7 +98,8 @@ export default function UploadNotesForm({
     }
 
     setIsSubmitting(true);
-    setUploadProgress(10);
+    setUploadStage('Validating file and session...');
+    setUploadProgress(15);
 
     try {
       let fileMeta = {
@@ -105,10 +109,14 @@ export default function UploadNotesForm({
       };
 
       if (selectedFile) {
+        setUploadStage('Uploading document to Supabase Storage...');
         fileMeta = await uploadNoteFileDirect(selectedFile, teacher.id, (percent) => {
           setUploadProgress(percent);
         });
       }
+
+      setUploadStage('Saving note metadata in database...');
+      setUploadProgress(85);
 
       let resultNote: Note;
       if (isEditing && initialNote) {
@@ -121,17 +129,22 @@ export default function UploadNotesForm({
         setToastMessage('Note details updated successfully.');
       } else {
         resultNote = await createNote(formData, fileMeta, teacher);
-        setToastMessage('Note published successfully.');
+        setToastMessage('Note published successfully to Supabase.');
       }
+
+      setUploadProgress(100);
+      setUploadStage('Upload Complete!');
 
       setTimeout(() => {
         onSuccess(resultNote);
-      }, 500);
+      }, 600);
     } catch (err: unknown) {
+      console.error('[UploadNotesForm] Error during upload:', err);
       const msg = err instanceof Error ? err.message : 'Upload failed. Please try again.';
       setErrorMessage(msg);
       setIsSubmitting(false);
       setUploadProgress(0);
+      setUploadStage('');
     }
   };
 
@@ -149,26 +162,27 @@ export default function UploadNotesForm({
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-950"
+          disabled={isSubmitting}
+          className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-950 disabled:opacity-40"
         >
           Close
         </button>
       </div>
 
       {toastMessage && (
-        <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-800 text-xs text-emerald-200 font-medium">
+        <div className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-800 text-xs text-emerald-200 font-medium leading-relaxed">
           {toastMessage}
         </div>
       )}
 
       {errorMessage && (
-        <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-xs text-rose-200 font-medium">
-          {errorMessage}
+        <div className="p-3.5 rounded-xl bg-rose-950/90 border border-rose-800 text-xs text-rose-200 font-medium leading-relaxed space-y-1">
+          <div className="font-bold text-rose-300">Upload Failed</div>
+          <div>{errorMessage}</div>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Title */}
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-1">
             Note Title *
@@ -176,14 +190,14 @@ export default function UploadNotesForm({
           <input
             type="text"
             required
+            disabled={isSubmitting}
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            placeholder="e.g. Unit 1: Digital Logic & Number Systems"
-            className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500"
+            placeholder="e.g. Unit 1: Digital Logic and Number Systems"
+            className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
           />
         </div>
 
-        {/* Subject & Unit */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -192,10 +206,11 @@ export default function UploadNotesForm({
             <input
               type="text"
               required
+              disabled={isSubmitting}
               value={formData.subject}
               onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
               placeholder="e.g. Computer Science"
-              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500"
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
             />
           </div>
           <div>
@@ -205,15 +220,15 @@ export default function UploadNotesForm({
             <input
               type="text"
               required
+              disabled={isSubmitting}
               value={formData.unit}
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
               placeholder="e.g. Unit I"
-              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500"
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
             />
           </div>
         </div>
 
-        {/* Class Section & Visibility Status */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -222,10 +237,11 @@ export default function UploadNotesForm({
             <input
               type="text"
               required
+              disabled={isSubmitting}
               value={formData.class_id}
               onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
               placeholder="e.g. CS-101"
-              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500"
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
             />
           </div>
           <div>
@@ -234,8 +250,9 @@ export default function UploadNotesForm({
             </label>
             <select
               value={formData.status}
+              disabled={isSubmitting}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as NoteStatus })}
-              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500"
+              className="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
             >
               <option value="published">Published (Visible to class)</option>
               <option value="draft">Draft (Hidden from students)</option>
@@ -243,54 +260,54 @@ export default function UploadNotesForm({
           </div>
         </div>
 
-        {/* Short Description */}
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-1">
             Short Description
           </label>
           <textarea
             rows={2}
+            disabled={isSubmitting}
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             placeholder="Brief overview of topics, formulas, or assignment scope..."
-            className="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 leading-relaxed"
+            className="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-sky-500 leading-relaxed disabled:opacity-50"
           />
         </div>
 
-        {/* Allow Download Checkbox */}
         <div className="flex items-center gap-2 pt-1">
           <input
             type="checkbox"
             id="allow_download_check"
+            disabled={isSubmitting}
             checked={formData.allow_download}
             onChange={(e) => setFormData({ ...formData, allow_download: e.target.checked })}
-            className="rounded border-slate-800 bg-slate-950 text-sky-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+            className="rounded border-slate-800 bg-slate-950 text-sky-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer disabled:opacity-50"
           />
           <label htmlFor="allow_download_check" className="text-xs text-slate-300 select-none cursor-pointer">
             Allow students to download original file (offline reading)
           </label>
         </div>
 
-        {/* File Picker Drag & Drop */}
         <div className="space-y-2 pt-2">
           <label className="block text-xs font-semibold text-slate-300">
-            Document File (PDF, DOCX, PPTX, PNG, JPG • Max 25 MB)
+            Document File (PDF, DOCX, PPTX, PNG, JPG - Max 25 MB)
           </label>
 
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !isSubmitting && fileInputRef.current?.click()}
             className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
               isDragging
                 ? 'border-sky-500 bg-sky-950/20'
                 : 'border-slate-800 bg-slate-950 hover:border-slate-700'
-            }`}
+            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <input
               type="file"
               ref={fileInputRef}
+              disabled={isSubmitting}
               accept={ALLOWED_EXTENSIONS.join(',')}
               onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
               className="hidden"
@@ -305,45 +322,43 @@ export default function UploadNotesForm({
               </div>
               <div className="text-[11px] text-slate-500">
                 {selectedFile
-                  ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for upload`
+                  ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB - Ready for upload`
                   : 'PDF required for standard preview. Direct private storage upload up to 25 MB.'}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Progress Bar */}
         {isSubmitting && (
-          <div className="space-y-1 pt-2">
+          <div className="space-y-1.5 pt-2">
             <div className="flex justify-between text-[11px] text-slate-400">
-              <span>Uploading to secure private bucket...</span>
+              <span className="font-medium text-sky-400">{uploadStage || 'Uploading...'}</span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
               <div
-                className="bg-sky-500 h-1.5 transition-all duration-300"
+                className="bg-sky-500 h-2 transition-all duration-300 rounded-full"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
           </div>
         )}
 
-        {/* Form Actions */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
           <button
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-medium rounded-xl border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 transition-colors"
+            className="px-4 py-2 text-xs font-medium rounded-xl border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-5 py-2 text-xs font-semibold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
+            className="px-5 py-2 text-xs font-semibold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? 'Saving...' : isEditing ? 'Update Note' : 'Upload & Save Note'}
+            {isSubmitting ? (uploadStage || 'Saving...') : isEditing ? 'Update Note' : 'Upload & Save Note'}
           </button>
         </div>
       </form>
