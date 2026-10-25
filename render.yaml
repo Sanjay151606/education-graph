@@ -4,7 +4,7 @@ services:
     name: braingraph-frontend
     runtime: static
     rootDir: education-new-main/frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
     routes:
       - type: rewrite
@@ -12,13 +12,17 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_SUPABASE_URL
+        placeholder: "https://your-project.supabase.co"
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
+        placeholder: "your-supabase-anon-key"
         sync: false
       - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        placeholder: "your-supabase-anon-key"
         sync: false
       - key: VITE_API_URL
-        value: ""
+        placeholder: "http://localhost:8000"
+        sync: false
 
   # Optional Python Backend (FastAPI) - Uncomment if you wish to host the API on Render
   # - type: web

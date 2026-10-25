@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix education-new-main/frontend run dev",
-    "build": "npm --prefix education-new-main/frontend run build",
+    "build": "npm --prefix education-new-main/frontend install --include=dev && npm --prefix education-new-main/frontend run build",
+    "start": "node server.js",
     "preview": "npm --prefix education-new-main/frontend run preview"
   },
   "engines": {
