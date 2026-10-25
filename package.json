@@ -6,5 +6,8 @@
     "dev": "npm --prefix education-new-main/frontend run dev",
     "build": "npm --prefix education-new-main/frontend run build",
     "preview": "npm --prefix education-new-main/frontend run preview"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

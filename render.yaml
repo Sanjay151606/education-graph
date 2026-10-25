@@ -1,0 +1,38 @@
+services:
+  # Frontend Static Site
+  - type: web
+    name: braingraph-frontend
+    runtime: static
+    rootDir: education-new-main/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_URL
+        value: ""
+
+  # Optional Python Backend (FastAPI) - Uncomment if you wish to host the API on Render
+  # - type: web
+  #   name: braingraph-backend
+  #   runtime: python
+  #   rootDir: education-new-main/backend
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: 3.11.9
+  #     - key: SUPABASE_URL
+  #       sync: false
+  #     - key: SUPABASE_KEY
+  #       sync: false
+  #     - key: SUPABASE_PUBLISHABLE_KEY
+  #       sync: false
